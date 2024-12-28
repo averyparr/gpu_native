@@ -29,6 +29,7 @@ use thread_layout::ThreadLayout;
 struct FlatLayout1D;
 
 #[inline(always)]
+#[allow(unused)]
 fn do_a_div<T: FloatCore>(a: T, b: T) -> T {
     a.recip() * b
 }

@@ -94,17 +94,20 @@ impl From<GridDimYZ> for i32 {
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct ThreadIdx1D {
     pub x: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct ThreadIdx2D {
     pub x: i32,
     pub y: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct ThreadIdx3D {
     pub x: i32,
     pub y: i32,
@@ -112,17 +115,20 @@ pub struct ThreadIdx3D {
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct BlockIdx1D {
     pub x: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct BlockIdx2D {
     pub x: i32,
     pub y: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct BlockIdx3D {
     pub x: i32,
     pub y: i32,
@@ -151,17 +157,20 @@ impl BlockIdx3D {
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct BlockDim1D {
     pub x: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct BlockDim2D {
     pub x: i32,
     pub y: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct BlockDim3D {
     pub x: i32,
     pub y: i32,
@@ -189,18 +198,38 @@ impl BlockDim3D {
     }
 }
 
+impl From<BlockDim2D> for BlockDim3D {
+    fn from(value: BlockDim2D) -> Self {
+        Self::new(value.x, value.y, 1)
+    }
+}
+impl From<BlockDim1D> for BlockDim3D {
+    fn from(value: BlockDim1D) -> Self {
+        Self::new(value.x, 1, 1)
+    }
+}
+
+impl From<BlockDim3D> for (u32, u32, u32) {
+    fn from(value: BlockDim3D) -> Self {
+        (value.x as u32, value.y as u32, value.z as u32)
+    }
+}
+
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct GridDim1D {
     pub x: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct GridDim2D {
     pub x: i32,
     pub y: i32,
 }
 
 #[allow(unused)]
+#[derive(Clone, Copy)]
 pub struct GridDim3D {
     pub x: i32,
     pub y: i32,
@@ -225,6 +254,23 @@ impl GridDim3D {
     #[allow(unused)]
     pub fn new(x: i32, y: i32, z: i32) -> Self {
         Self { x, y, z }
+    }
+}
+
+impl From<GridDim1D> for GridDim3D {
+    fn from(value: GridDim1D) -> Self {
+        Self::new(value.x, 1, 1)
+    }
+}
+impl From<GridDim2D> for GridDim3D {
+    fn from(value: GridDim2D) -> Self {
+        Self::new(value.x, value.y, 1)
+    }
+}
+
+impl From<GridDim3D> for (u32, u32, u32) {
+    fn from(value: GridDim3D) -> Self {
+        (value.x as u32, value.y as u32, value.z as u32)
     }
 }
 

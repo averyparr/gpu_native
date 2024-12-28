@@ -49,6 +49,7 @@ impl PartialOrd<usize> for UniqueId {
 }
 
 #[repr(C)]
+#[derive(Clone, Copy)]
 pub struct CUDASlice<'a, T>(&'a [T]);
 
 #[repr(C)]
