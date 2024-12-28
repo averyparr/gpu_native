@@ -209,6 +209,18 @@ impl From<BlockDim1D> for BlockDim3D {
     }
 }
 
+impl From<BlockDim1D> for (u32, u32, u32) {
+    fn from(value: BlockDim1D) -> Self {
+        (value.x as u32, 1, 1)
+    }
+}
+
+impl From<BlockDim2D> for (u32, u32, u32) {
+    fn from(value: BlockDim2D) -> Self {
+        (value.x as u32, value.y as u32, 1)
+    }
+}
+
 impl From<BlockDim3D> for (u32, u32, u32) {
     fn from(value: BlockDim3D) -> Self {
         (value.x as u32, value.y as u32, value.z as u32)
@@ -265,6 +277,18 @@ impl From<GridDim1D> for GridDim3D {
 impl From<GridDim2D> for GridDim3D {
     fn from(value: GridDim2D) -> Self {
         Self::new(value.x, value.y, 1)
+    }
+}
+
+impl From<GridDim1D> for (u32, u32, u32) {
+    fn from(value: GridDim1D) -> Self {
+        (value.x as u32, 1, 1)
+    }
+}
+
+impl From<GridDim2D> for (u32, u32, u32) {
+    fn from(value: GridDim2D) -> Self {
+        (value.x as u32, value.y as u32, 1)
     }
 }
 
