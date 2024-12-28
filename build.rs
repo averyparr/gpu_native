@@ -51,12 +51,13 @@ macro_rules! link_in_sass {
             };
 
             let mut fatbin_args: Vec<String> = vec![];
-            let mut fatbin_exec = "fatbin";
+            let mut fatbin_exec = "fatbinary";
             if use_docker {
                 fatbin_exec = "docker";
                 fatbin_args.push("fatbinary".to_string());
             }
             fatbin_args.push("--create=lib.fatbin".to_string());
+            fatbin_args.push("--64".to_string());
 
             let mut already_compiled_ptx: HashSet<String> = HashSet::new();
 
@@ -76,6 +77,7 @@ macro_rules! link_in_sass {
                     &format!("target-cpu={sm_version}"),
                     "-C",
                     "panic=abort",
+                    "--emit=asm",
                 ];
                 let status = Command::new("cargo")
                     .args(
