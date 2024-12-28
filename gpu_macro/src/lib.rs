@@ -748,6 +748,7 @@ fn make_cpu_mod(input_fn: &ItemFn, arch: TargetType, ident_to_num_ffi: &HashMap<
     let kernel_launch = arch.kernel_launch()?;
 
     content.push(syn::parse(quote_spanned! {sig.span()=>
+        #[cfg(not(any(target_arch = "nvptx64")))]
         pub #kernel_launch_sig {
             #(#bin_data)*
 
