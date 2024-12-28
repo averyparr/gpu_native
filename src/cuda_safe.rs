@@ -412,3 +412,11 @@ impl Thread3D {
         }
     }
 }
+
+pub unsafe trait GPUPassable {
+    type FFIRep;
+    #[allow(unused)]
+    fn to_ffi(&mut self) -> Self::FFIRep;
+    #[allow(unused)]
+    unsafe fn from_ffi(other: Self::FFIRep) -> Self;
+}

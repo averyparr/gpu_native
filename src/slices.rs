@@ -3,6 +3,7 @@ use core::ops::{Index, IndexMut};
 use crate::{
     assert_universal,
     cuda_atomic::{AtomicF32, AtomicF64},
+    cuda_safe::GPUPassable,
 };
 
 #[derive(Clone, Copy)]
@@ -172,5 +173,29 @@ impl<'a, T> IndexMut<UniqueId> for CUDASliceMut<'a, T> {
     fn index_mut(&mut self, index: UniqueId) -> &mut Self::Output {
         assert_universal!(index.0 < self.0.len());
         &mut self.0[index.0]
+    }
+}
+
+unsafe impl<T> GPUPassable for CUDASlice<'_, T> {
+    type FFIRep = (*const T, u64);
+
+    fn to_ffi<'a>(&'a mut self) -> Self::FFIRep {
+        (self.as_ptr(), self.len() as u64)
+    }
+
+    unsafe fn from_ffi(other: Self::FFIRep) -> Self {
+        unsafe { core::slice::from_raw_parts(other.0, other.1 as usize) }.into()
+    }
+}
+
+unsafe impl<T> GPUPassable for CUDASliceMut<'_, T> {
+    type FFIRep = (*mut T, u64);
+
+    fn to_ffi<'a>(&'a mut self) -> Self::FFIRep {
+        (self.as_mut_ptr(), self.len() as u64)
+    }
+
+    unsafe fn from_ffi(other: Self::FFIRep) -> Self {
+        unsafe { core::slice::from_raw_parts_mut(other.0, other.1 as usize) }.into()
     }
 }
