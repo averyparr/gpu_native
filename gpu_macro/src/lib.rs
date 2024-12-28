@@ -171,9 +171,9 @@ impl TargetType {
         };
 
         let block_type: TypePath = match kernel_dim {
-            KernelDim::One => parse_quote!(crate::cuda_safe::GridDim1D),
-            KernelDim::Two => parse_quote!(crate::cuda_safe::GridDim2D),
-            KernelDim::Three => parse_quote!(crate::cuda_safe::GridDim3D),
+            KernelDim::One => parse_quote!(crate::cuda_safe::BlockDim1D),
+            KernelDim::Two => parse_quote!(crate::cuda_safe::BlockDim2D),
+            KernelDim::Three => parse_quote!(crate::cuda_safe::BlockDim3D),
         };
         
         let sig: Signature = syn::parse(quote!{
