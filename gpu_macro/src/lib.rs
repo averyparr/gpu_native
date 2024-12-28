@@ -844,3 +844,53 @@ pub fn gpu_kernel(attr: TokenStream, item: TokenStream) -> TokenStream {
         Ok(v) | Err(ProcMacFailure(v)) => v,
     }
 }
+
+#[proc_macro_attribute]
+pub fn host(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let item = syn::parse_macro_input!(item as Item);
+    
+    let output = quote! {
+        #[cfg(not(any(target_arch = "nvptx64")))]
+        #item
+    };
+    
+    output.into()
+}
+
+#[proc_macro_attribute]
+pub fn device(attr: TokenStream, item: TokenStream) -> TokenStream {
+    let item = syn::parse_macro_input!(item as Item);
+
+    let maybe_arch_types_ids = syn::parse::Parser::parse(
+        Punctuated::<Ident, syn::Token![,]>::parse_terminated,
+        attr,
+    );
+    let arch_types_ids = match maybe_arch_types_ids {
+        Ok(v) => v,
+        Err(_) => {
+            return quote!{
+                compile_error!(concat!("`device` take either no arguments or", #GPU_TYPES));
+            }.into();
+        }
+    };
+    let maybe_archs  = get_architectures(arch_types_ids.iter());
+    let arch_types = match maybe_archs {
+        Ok(v) => v,
+        Err(e) => {
+            return e;
+        }
+    };
+
+    if arch_types.is_empty() {
+        return quote! {
+            #[cfg(any(target_arch = "nvptx64"))]
+            #item
+        }.into();
+    } else {
+        let attr = TargetType::to_many_arch_cfg(arch_types.iter(), arch_types_ids.span());
+        return quote! {
+            #attr
+            #item
+        }.into();
+    };
+}
