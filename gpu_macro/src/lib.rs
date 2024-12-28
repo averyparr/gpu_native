@@ -794,11 +794,11 @@ fn gpu_kernel_inner(attr: TokenStream, item: TokenStream) -> Result<TokenStream,
     )?;
 
     let arch_types: Vec<_> = arch_kernel_types.iter().filter(|&id| {
-        !(id == "1D" || id == "2D" || id == "3D")
+        !(id == "Kernel1D" || id == "Kernel2D" || id == "Kernel3D")
     }).collect();
 
     let kernel_dim_args: Vec<_> = arch_kernel_types.iter().filter(|&id| {
-        id == "1D" || id == "2D" || id == "3D"
+        id == "Kernel1D" || id == "Kernel2D" || id == "Kernel3D"
     }).collect();
 
     if kernel_dim_args.len() > 1 {
@@ -808,9 +808,9 @@ fn gpu_kernel_inner(attr: TokenStream, item: TokenStream) -> Result<TokenStream,
     }
 
     let kernel_dim = kernel_dim_args.first().map(|id| match id.to_string().as_str() {
-        "1D" => KernelDim::One,
-        "2D" => KernelDim::Two,
-        "3D" => KernelDim::Three,
+        "Kernel1D" => KernelDim::One,
+        "Kernel2D" => KernelDim::Two,
+        "Kernel3D" => KernelDim::Three,
         _ => unreachable!("Should have filtered it out."),
     }).unwrap_or(KernelDim::Three);
 
