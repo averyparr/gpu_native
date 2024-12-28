@@ -3,7 +3,12 @@ use std::{collections::HashSet, io::Write, process::Command, str::FromStr};
 macro_rules! link_in_sass {
     () => {
         compile_error!(
-            r#"Format example: `link_in_sass!(sm = (sm_89, sm_90a), host_arch = ("x86_64", "armv7"), use_docker: true)`"#
+            r#"Format examle: `link_in_sass!(
+                sm = ("sm_80", "sm_86"),
+                host_arch = ("x86_64", "armv7", "aarch64"),
+                cargo_rustc_args = ("--release"),
+                docker_image = "nvidia/cuda:12.6.3-devel-ubuntu24.04"
+            )`"#
         )
     };
     (
