@@ -37,7 +37,25 @@ macro_rules! link_in_sass {
                 .to_str()
                 .expect("build_dir isn't utf-8 representible");
 
-            let use_docker = docker_image.is_some();
+            let mut use_docker = docker_image.is_some();
+            if use_docker {
+                let docker_exists = match Command::new("docker").spawn() {
+                    Ok(_) => true,
+                    Err(e) => {
+                        if let std::io::ErrorKind::NotFound = e.kind() {
+                            false
+                        }
+                        else {
+                            panic!("Weird error '{e}' appeared when spawning Docker.");
+                        }
+                    }
+                };
+                if !docker_exists {
+                    println!("cargo::warning=Docker doesn't exist. Trying to compile with system executables.");
+                    use_docker = false;
+                }
+            }
+
 
             let docker_cmd_prefix = [
                 "run",
@@ -276,7 +294,7 @@ fn main() {
     }
 
     link_in_sass!(
-        sm = ("sm_89", "sm_90a"),
+        sm = ("sm_80", "sm_86"),
         host_arch = ("x86_64", "armv7", "aarch64"),
         cargo_rustc_args = ("--release"),
         docker_image = "nvidia/cuda:12.6.3-devel-ubuntu24.04"
