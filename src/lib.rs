@@ -21,7 +21,6 @@ mod thread_layout;
 #[cfg(not(any(target_arch = "nvptx64")))]
 mod cuda_driver_wrapper;
 
-use gpu_macro::gpu_kernel;
 use num_traits::float::FloatCore;
 use thread_layout::ThreadLayout;
 
@@ -53,18 +52,21 @@ pub fn ready() {
     let y = [1.0, 2.4];
     let mut z = [1.0, 2.2];
     let mut w = [1.0, 2.1];
+
+    let (mut x_sl, mut y_sl, mut z_sl, mut w_sl) = (
+        CUDASlice::from(x.as_slice()),
+        CUDASlice::from(y.as_slice()),
+        CUDASliceMut::from(z.as_mut_slice()),
+        CUDASliceMut::from(w.as_mut_slice()),
+    );
+
     // I do *not* know whether this is safe, even _if_ the slices were on-device.
     vector_add::launch(
         GridDim1D::new(1),
         BlockDim1D::new(1),
         0,
         cuda_driver_wrapper::DEFAULT_STREAM.clone(),
-    )(
-        CUDASlice::from(x.as_slice()),
-        CUDASlice::from(y.as_slice()),
-        CUDASliceMut::from(z.as_mut_slice()),
-        CUDASliceMut::from(w.as_mut_slice()),
-    );
+    )(&mut x_sl, &mut y_sl, &mut z_sl, &mut w_sl);
 }
 
 #[cfg(target_arch = "nvptx64")]
@@ -136,16 +138,15 @@ pub mod vector_add {
         shared_mem_bytes: u32,
         stream: crate::cuda_driver_wrapper::CUDAStream,
     ) -> impl Fn(
-        crate::slices::CUDASlice<'kernel, f32>,
-        crate::slices::CUDASlice<'kernel, f32>,
-        crate::slices::CUDASliceMut<'kernel, f32>,
-        crate::slices::CUDASliceMut<'kernel, f32>,
+        &'kernel mut crate::slices::CUDASlice<f32>,
+        &'kernel mut crate::slices::CUDASlice<f32>,
+        &'kernel mut crate::slices::CUDASliceMut<f32>,
+        &'kernel mut crate::slices::CUDASliceMut<f32>,
     ) -> &'kernel crate::cuda_driver_wrapper::CUDASyncObject {
         use crate::cuda_driver_wrapper::{CUDAKernel, CUDAModule};
         use std::sync::LazyLock;
 
         static MODULE: LazyLock<CUDAModule> = LazyLock::new(|| {
-            // TODO MAKE THIS ACTUALLY DO ANYTHING TO LOAD THE SASS/PTX
             let fatbin_data = cuda_device_code::fatbin_data();
             unsafe { CUDAModule::new_from_fatbin(fatbin_data as *const _ as *mut _) }
                 .unwrap_or_else(|e| panic!("Unable to load module: Driver error '{e:#?}'"))
@@ -157,10 +158,10 @@ pub mod vector_add {
         });
 
         let launch_kernel =
-            move |a: crate::slices::CUDASlice<'kernel, f32>,
-                  b: crate::slices::CUDASlice<'kernel, f32>,
-                  c: crate::slices::CUDASliceMut<'kernel, f32>,
-                  d: crate::slices::CUDASliceMut<'kernel, f32>| {
+            move |a: &'kernel mut crate::slices::CUDASlice<f32>,
+                  b: &'kernel mut crate::slices::CUDASlice<f32>,
+                  c: &'kernel mut crate::slices::CUDASliceMut<f32>,
+                  d: &'kernel mut crate::slices::CUDASliceMut<f32>| {
                 let mut a_ptr = a.as_ptr();
                 let mut a_len = a.len();
                 let mut b_ptr = b.as_ptr();
