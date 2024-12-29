@@ -8,10 +8,15 @@ use crate::{
 
 #[repr(C)]
 #[derive(Clone, Copy)]
-pub struct CUDASlice<'a, T>(&'a [T]);
+pub struct CUDASlice<'a, T>(
+    pub(crate) &'a [T],
+    // /// We do this to ensure slices can work in an async context.
+    // #[cfg(not(any(target_arch = "nvptx64")))]
+    // Option<&'a crate::cuda::driver_wrapper::CUDAStream>,
+);
 
 #[repr(C)]
-pub struct CUDASliceMut<'a, T>(&'a mut [T]);
+pub struct CUDASliceMut<'a, T>(pub(crate) &'a mut [T]);
 
 impl<'a, T> CUDASlice<'a, T> {
     #[inline(always)]

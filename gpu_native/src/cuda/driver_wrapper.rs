@@ -1,10 +1,14 @@
 use core::ffi::CStr;
 use core::ffi::c_void;
+use core::mem::MaybeUninit;
 use cudarc::driver::DriverError;
 use cudarc::driver::result as cuda;
 use cudarc::driver::sys as cuda_sys;
 use std::sync::Arc;
 use std::sync::LazyLock;
+
+use crate::slices::CUDASlice;
+use crate::slices::CUDASliceMut;
 
 #[derive(Clone)]
 pub struct CUDAContext(Arc<cudarc::driver::sys::CUcontext>);
@@ -35,12 +39,16 @@ impl CUDAModule {
     }
 
     pub fn get_function(&self, fn_name: &CStr) -> Result<CUDAKernel, DriverError> {
-        let fn_ptr = std::ptr::null_mut();
+        let mut fn_ptr = MaybeUninit::uninit();
         unsafe {
-            cuda_sys::lib().cuModuleGetFunction(fn_ptr, *self.0, fn_name.as_ptr() as *const _)
+            cuda_sys::lib().cuModuleGetFunction(
+                fn_ptr.as_mut_ptr(),
+                *self.0,
+                fn_name.as_ptr() as *const _,
+            )
         }
         .result()?;
-        Ok(CUDAKernel(Arc::new(unsafe { *fn_ptr })))
+        Ok(CUDAKernel(Arc::new(unsafe { fn_ptr.assume_init() })))
     }
 }
 
@@ -149,12 +157,19 @@ pub static DEFAULT_DEVICE: LazyLock<i32> = LazyLock::new(|| {
 pub static DEFAULT_CTX: LazyLock<CUDAContext> = LazyLock::new(|| {
     assert!(*DRIVER_INIT);
     assert!(*DEFAULT_DEVICE > -1);
-    let ctx: *mut cuda_sys::CUcontext = std::ptr::null_mut();
-    let result = unsafe { cuda_sys::lib().cuCtxCreate_v2(ctx, 0, *DEFAULT_DEVICE) };
+    let mut ctx: MaybeUninit<cuda_sys::CUcontext> = MaybeUninit::uninit();
+    let reset_res = unsafe { cuda_sys::lib().cuDevicePrimaryCtxReset_v2(0) };
+    match reset_res {
+        cuda_sys::CUresult::CUDA_SUCCESS => {}
+        _ => {
+            panic!("Unable to reset default ctx: driver error '{reset_res:#?}'");
+        }
+    }
+    let result = unsafe { cuda_sys::lib().cuCtxCreate_v2(ctx.as_mut_ptr(), 0, *DEFAULT_DEVICE) };
     if result != cuda_sys::cudaError_enum::CUDA_SUCCESS {
         panic!("Unable to establish default ctx: driver error '{result:#?}'");
     }
-    CUDAContext(Arc::new(unsafe { *ctx }))
+    CUDAContext(Arc::new(unsafe { ctx.assume_init() }))
 });
 
 #[allow(unused)]
@@ -166,3 +181,111 @@ pub static DEFAULT_STREAM: LazyLock<CUDAStream> = LazyLock::new(|| {
 });
 
 pub struct CUDASyncObject;
+
+pub struct CudaBuffer<T>(*mut T, usize, Option<CUDAStream>);
+
+impl<T> CudaBuffer<T> {
+    pub fn as_slice<'a>(&'a self) -> CUDASlice<'a, T> {
+        // TODO: figure out how to remove.
+        // See the conditional reference in host code...
+        assert!(
+            self.2.is_none(),
+            "Async buffers aren't yet supported with slices."
+        );
+        // Safety: I hold on to a valid pointer at a contiguous range of elements.
+        //  I am valid for at least 'a.
+        CUDASlice(unsafe { std::slice::from_raw_parts(self.0, self.1) })
+    }
+
+    pub fn as_mut_slice<'a>(&'a mut self) -> CUDASliceMut<'a, T> {
+        // TODO: figure out how to remove.
+        // See the conditional reference in host code...
+        assert!(
+            self.2.is_none(),
+            "Async buffers aren't yet supported with slices."
+        );
+        // Safety: I hold on to a valid pointer at a contiguous range of elements.
+        //  I am valid for at least 'a.
+        CUDASliceMut(unsafe { std::slice::from_raw_parts_mut(self.0, self.1) })
+    }
+
+    pub fn copy_htod(&mut self, buf: &[T]) -> Result<(), DriverError> {
+        assert!(
+            self.1 == buf.len(),
+            "Attempted to `copy_htod` between different-sized buffers"
+        );
+        unsafe { cudarc::driver::result::memcpy_htod_sync(self.0 as u64, buf) }
+    }
+
+    pub fn copy_htod_async(&mut self, buf: &[T], stream: &CUDAStream) -> Result<(), DriverError> {
+        assert!(
+            self.1 == buf.len(),
+            "Attempted to `copy_htod` between different-sized buffers"
+        );
+        unsafe { cudarc::driver::result::memcpy_htod_async(self.0 as u64, buf, *stream.0) }
+    }
+
+    pub fn copy_dtoh(&self, buf: &mut [T]) -> Result<(), DriverError> {
+        assert!(
+            self.1 == buf.len(),
+            "Attempted to `copy_dtoh` between different-sized buffers"
+        );
+        unsafe { cudarc::driver::result::memcpy_dtoh_sync(buf, self.0 as u64) }
+    }
+
+    pub fn copy_dtoh_async(&self, buf: &mut [T], stream: &CUDAStream) -> Result<(), DriverError> {
+        assert!(
+            self.1 == buf.len(),
+            "Attempted to `copy_dtoh` between different-sized buffers"
+        );
+        unsafe { cudarc::driver::result::memcpy_dtoh_async(buf, self.0 as u64, *stream.0) }
+    }
+}
+
+impl<T> Drop for CudaBuffer<T> {
+    fn drop(&mut self) {
+        match &self.2 {
+            Some(stream) => unsafe { cudarc::driver::result::free_async(self.0 as u64, *stream.0) },
+            None => unsafe { cudarc::driver::result::free_sync(self.0 as u64) },
+        }
+        .expect("cudaFree has failed. There's no way to return an error in Drop.");
+    }
+}
+
+pub fn malloc_async<T>(
+    stream: &CUDAStream,
+    num_elements: usize,
+) -> Result<CudaBuffer<T>, DriverError> {
+    assert!(!DEFAULT_CTX.is_null());
+
+    // Safety: DEFAULT_STREAM is non-null, initialized CUDA
+    // stream because it doesn't allow modification and is
+    // initailized before first use.
+    // We otherwise defer trust to the CUDA driver.
+    let ptr = unsafe {
+        cudarc::driver::result::malloc_async(*stream.0, num_elements * std::mem::size_of::<T>())
+    }?;
+
+    // Safety: If there is no driver error, then malloc_async
+    // has returned a valid address to device memory.
+    let ptr: *mut T = unsafe { std::mem::transmute(ptr) };
+
+    Ok(CudaBuffer(ptr, num_elements, Some(stream.clone())))
+}
+
+pub fn malloc_sync<T>(num_elements: usize) -> Result<CudaBuffer<T>, DriverError> {
+    assert!(!DEFAULT_CTX.is_null());
+
+    // Safety: DEFAULT_STREAM is non-null, initialized CUDA
+    // stream because it doesn't allow modification and is
+    // initailized before first use.
+    // We otherwise defer trust to the CUDA driver.
+    let ptr =
+        unsafe { cudarc::driver::result::malloc_sync(num_elements * std::mem::size_of::<T>()) }?;
+
+    // Safety: If there is no driver error, then malloc_async
+    // has returned a valid address to device memory.
+    let ptr: *mut T = unsafe { std::mem::transmute(ptr) };
+
+    Ok(CudaBuffer(ptr, num_elements, None))
+}
