@@ -653,7 +653,7 @@ fn generate_outer_function(
         output: ReturnType::Default,
     };
 
-    let attrs = vec![target_type.to_arch_gate(kernel_sig.span())];
+    let attrs = vec![target_type.to_arch_gate(kernel_sig.span()), parse_quote!(#[unsafe(no_mangle)])];
     let mut block = {
         let b: Block = syn::parse_quote_spanned! {sig.span()=>{}};
         Box::new(b)

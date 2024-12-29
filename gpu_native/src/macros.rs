@@ -279,7 +279,7 @@ macro_rules! link_in_sass {
 
             let linkable_obj = Command::new("rustc")
                 .current_dir(&build_dir)
-                .args(["--crate-type=lib", "--emit=obj", "fatbin.rs"])
+                .args(["--crate-type=staticlib", "fatbin.rs"])
                 .status()
                 .expect("Cannot start rustc!");
 
@@ -289,10 +289,10 @@ macro_rules! link_in_sass {
 
             let out_dir = std::path::PathBuf::from_str(&std::env::var("OUT_DIR").expect("No OUT_DIR"))
                 .expect("OUT_DIR isn't a path");
-            let final_fatbin_filename = concat!(env!("CARGO_PKG_NAME"), "_fatbin.o");
+            let final_fatbin_filename = concat!("libfatbin_", env!("CARGO_PKG_NAME"), ".a");
             let final_fatbin_path = out_dir.as_path().join(final_fatbin_filename);
-            std::fs::rename(build_dir.join("fatbin.o"), final_fatbin_path.as_path())
-                .expect("Unable to move `fatbin.o` to OUT_DIR");
+            std::fs::rename(build_dir.join("libfatbin.a"), final_fatbin_path.as_path())
+                .expect("Unable to move `libfatbin.a` to OUT_DIR");
             std::fs::rename(build_dir.join("lib.fatbin"), out_dir.join("lib.fatbin"))
                 .expect("Unable to move `lib.fatbin` to OUT_DIR");
             let copy_build_dir = out_dir.join("target-nvptx64");
@@ -305,10 +305,13 @@ macro_rules! link_in_sass {
                 copy_build_dir,
             )
             .expect("Unable to move `nvptx64-nvidia-cuda` to OUT_DIR");
+            std::fs::rename(
+                build_dir.join("fatbin.rs"),
+                out_dir.join("fatbin.rs"),
+            ).expect("Unable to move `fatbin.rs`");
 
-            println!("cargo:rustc-link-arg={}", final_fatbin_path.display());
-
-
+            println!("cargo:rustc-link-lib={}", "fatbin_kernels");
+            println!("cargo:rustc-link-search={}", out_dir.display());
         }()
     };
 }
