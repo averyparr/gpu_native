@@ -49,8 +49,12 @@ macro_rules! impl_atomic_op {
                         in($reg_ty) val,
                     )
                 },
-                Ordering::SeqCst => crate::cu_panic!("SeqCst is not supported on CUDA devices."),
-                _ => crate::cu_panic!("Unsupported ordering!"),
+                Ordering::SeqCst => {
+                    crate::cu_panic!("SeqCst is not supported on CUDA devices.");
+                },
+                _ => {
+                    crate::cu_panic!("Unsupported ordering!");
+                },
             };
             old_val
         }
@@ -163,7 +167,7 @@ fn backing_float_impl<T: UnsignedFloatStorage>(
             Ordering::Release | Ordering::Relaxed => Ordering::Relaxed,
             Ordering::SeqCst => Ordering::SeqCst,
             _ => {
-                crate::panic_universal!("Unsupported atomic ordering!");
+                super::panic_universal!("Unsupported atomic ordering!");
             }
         };
         let v = unsafe { <T as UnsignedFloatStorage>::shim_from_ptr(cell_rep.get() as *mut _) };

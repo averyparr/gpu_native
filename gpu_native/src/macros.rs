@@ -1,5 +1,8 @@
-use std::{collections::HashSet, io::Write, process::Command, str::FromStr};
+#[inline]
+#[cold]
+pub fn __cold() {}
 
+#[macro_export]
 macro_rules! link_in_sass {
     () => {
         compile_error!(
@@ -17,6 +20,25 @@ macro_rules! link_in_sass {
         cargo_rustc_args=($($cargo_rustc_args: literal),*)$(,)?
         $(docker_image = $docker_image: literal)?) => {
         || -> () {
+            struct TemporaryDir(std::path::PathBuf);
+            impl TemporaryDir {
+                fn new(path: std::path::PathBuf) -> Self {
+                    std::fs::create_dir(path.as_path())
+                        .expect("Could not create pseudorandom directory. Try again?");
+                    Self(path)
+                }
+                fn as_path(&self) -> &std::path::Path {
+                    self.0.as_path()
+                }
+            }
+            impl Drop for TemporaryDir {
+                fn drop(&mut self) {
+                    std::fs::remove_dir_all(self.0.as_path())
+                        .expect("Could not remove the entire pseudorandom directory.");
+                }
+            }
+            use std::{collections::HashSet, io::Write, process::Command, str::FromStr};
+
             let docker_image: Option<&str> = None$(.or_else(|| Some($docker_image)))?;
             let host_archs: &[&str] = &[$($host_archs),*];
 
@@ -31,11 +53,15 @@ macro_rules! link_in_sass {
                 }
                 return;
             }
-            let guard = tempfile::tempdir().expect("Cannot create a tempdir");
-            let build_dir = guard.path();
-            let build_dir_str = build_dir
-                .to_str()
-                .expect("build_dir isn't utf-8 representible");
+            // I want to have zero build dependencies, so we use this instead of `tempfile`.
+            let pseudorandom = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .subsec_nanos()
+                % (u16::MAX as u32);
+            let prnd_filename = format!(".link_sass_{pseudorandom}");
+            let guard = TemporaryDir::new(std::path::PathBuf::from_str(&prnd_filename).unwrap());
+            let build_dir = guard.as_path();
 
             let mut use_docker = docker_image.is_some();
             if use_docker {
@@ -91,7 +117,7 @@ macro_rules! link_in_sass {
             for sm_version in sm_versions {
                 let required_prefix_args = [
                     "rustc",
-                    &format!("--target-dir={build_dir_str}"),
+                    &format!("--target-dir={}", build_dir.display()),
                     "--target=nvptx64-nvidia-cuda",
                 ];
                 let maybe_ddash = if include_ddash { Some("--") } else { None };
@@ -155,8 +181,7 @@ macro_rules! link_in_sass {
                         already_compiled_ptx.insert(dep_str_rep.to_string());
                     }
 
-                    let rel_buf = dep.to_path_buf();
-                    let rel_path = rel_buf.strip_prefix(build_dir).expect("Unable to strip prefix");
+                    let rel_path = dep.strip_prefix(build_dir).expect("Unable to strip prefix");
                     let mut ptxas_exec = "ptxas";
                     let mut ptxas_as_arg = None;
                     if use_docker {
@@ -282,22 +307,101 @@ macro_rules! link_in_sass {
             .expect("Unable to move `nvptx64-nvidia-cuda` to OUT_DIR");
 
             println!("cargo:rustc-link-arg={}", final_fatbin_path.display());
+
+
         }()
     };
 }
 
-fn main() {
-    let is_probably_ide = std::env::var("RUSTC_WRAPPER")
+#[cfg(not(any(target_arch = "nvptx64")))]
+pub fn is_probably_ide() -> bool {
+    std::env::var("RUSTC_WRAPPER")
         .map(|s| s.contains("rust-analyzer"))
-        .unwrap_or(false);
-    if is_probably_ide {
-        return;
-    }
+        .unwrap_or(false)
+}
 
-    link_in_sass!(
-        sm = ("sm_80", "sm_86"),
-        host_arch = ("x86_64", "armv7", "aarch64"),
-        cargo_rustc_args = ("--release"),
-        docker_image = "nvidia/cuda:12.6.3-devel-ubuntu24.04"
-    );
+#[macro_export]
+macro_rules! assert_universal {
+    ($expr: expr) => {
+        #[cfg(target_arch = "nvptx64")]
+        $crate::cu_assert!($expr);
+        #[cfg(not(target_arch = "nvptx64"))]
+        assert!($expr);
+
+        unsafe { core::hint::assert_unchecked($expr)};
+    };
+    ($expr: expr, $($arg:tt)+) => {
+        #[cfg(target_arch = "nvptx64")]
+        $crate::cu_assert!($expr, $($arg)+);
+        #[cfg(not(target_arch = "nvptx64"))]
+        assert!($expr, $($arg)+);
+
+        unsafe { core::hint::assert_unchecked($expr)};
+    };
+}
+
+#[macro_export]
+macro_rules! panic_universal {
+    ($($arg:tt)*) => {
+        #[cfg(target_arch = "nvptx64")]
+        {
+            crate::cu_panic!($($arg)*);
+        }
+
+        #[cfg(not(target_arch = "nvptx64"))]
+        {
+            panic!($($arg)*);
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! cu_assert {
+    ($expr: expr) => {
+        #[cfg(target_arch = "nvptx64")]
+        if !($expr) {
+            $crate::macros::__cold();
+            unsafe {
+                $crate::cuda::intrinsics::__assert_fail(
+                    stringify!($cond).as_ptr() as *const u8,
+                    file!().as_ptr() as *const u8,
+                    line!(),
+                    "[fn cannot be captured]".as_ptr() as *const u8,
+                )
+            };
+        }
+        #[cfg(not(target_arch = "nvptx64"))]
+        compile_error!("Cannot call cu_assert outside PTX!");
+    };
+    ($expr: expr, $($arg:tt)+) => {
+        #[cfg(target_arch = "nvptx64")]
+        if !($expr) {
+            $crate::macros::__cold();
+            unsafe {
+                $crate::cuda::intrinsics::__assert_fail(
+                    format_args!($($arg)+).as_str().unwrap_or("[no msg]").as_ptr() as *const u8,
+                    file!().as_ptr() as *const u8,
+                    line!(),
+                    "[fn cannot be captured]".as_ptr() as *const u8,
+                )
+            };
+        }
+        #[cfg(not(target_arch = "nvptx64"))]
+        compile_error!("Cannot call cu_assert outside PTX!");
+    };
+}
+
+#[macro_export]
+macro_rules! cu_panic {
+    ($($arg:tt)*) => {
+        #[cfg(target_arch = "nvptx64")]
+        unsafe {
+            $crate::cuda::intrinsics::vprintf(format_args!($($arg)*).as_str().unwrap_or("[no msg]").as_ptr() as *const u8, core::ptr::null_mut());
+            $crate::cuda::intrinsics::__trap();
+        }
+        #[cfg(not(target_arch = "nvptx64"))]
+        {
+            compile_error!("Cannot call cu_panic outside PTX!");
+        }
+    };
 }

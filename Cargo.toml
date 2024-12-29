@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [target.'cfg(not(target_arch = "nvptx64"))'.dependencies]
-cudarc = { version = "0.12.2", default-features = false, features = ["cuda-12060", "driver"] }
+gpu_native = { version = "0.1.0", path = "gpu_native" }
 
 [profile.dev]
 panic="abort"
@@ -14,7 +14,5 @@ panic="abort"
 
 [dependencies]
 gpu_macro = { path = "./gpu_macro" }
+kernels = { version = "0.1.0", path = "kernels" }
 num-traits = { version = "0.2.19", default-features = false }
-
-[target.'cfg(not(target_arch = "nvptx64"))'.build-dependencies]
-tempfile = "3.14.0"

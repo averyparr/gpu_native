@@ -2,52 +2,9 @@ use core::ops::{Index, IndexMut};
 
 use crate::{
     assert_universal,
-    cuda_atomic::{AtomicF32, AtomicF64},
-    cuda_safe::GPUPassable,
+    atomic::{AtomicF32, AtomicF64},
+    gpu_safety::UniqueId,
 };
-
-#[derive(Clone, Copy)]
-pub struct UniqueId(pub usize);
-
-impl PartialEq<usize> for UniqueId {
-    #[inline(always)]
-    fn eq(&self, other: &usize) -> bool {
-        self.0 == *other
-    }
-    #[inline(always)]
-    fn ne(&self, other: &usize) -> bool {
-        self.0 != *other
-    }
-}
-
-impl PartialOrd<usize> for UniqueId {
-    #[inline(always)]
-    fn ge(&self, other: &usize) -> bool {
-        self.0 >= *other
-    }
-    #[inline(always)]
-    fn gt(&self, other: &usize) -> bool {
-        self.0 > *other
-    }
-    #[inline(always)]
-    fn le(&self, other: &usize) -> bool {
-        self.0 <= *other
-    }
-    #[inline(always)]
-    fn lt(&self, other: &usize) -> bool {
-        self.0 < *other
-    }
-    #[inline(always)]
-    fn partial_cmp(&self, other: &usize) -> Option<core::cmp::Ordering> {
-        if self.0 == *other {
-            Some(core::cmp::Ordering::Equal)
-        } else if self.0 < *other {
-            Some(core::cmp::Ordering::Less)
-        } else {
-            Some(core::cmp::Ordering::Greater)
-        }
-    }
-}
 
 #[repr(C)]
 #[derive(Clone, Copy)]
@@ -104,8 +61,9 @@ impl IntoAtomic for f64 {
 impl<'a, T: IntoAtomic> CUDASliceMut<'a, T> {
     // TODO I need to think more about lifetimes here
     #[inline(always)]
-    pub fn atomic_ref(&mut self, idx: usize) -> &'a T::Atomic {
-        crate::assert_universal!(idx < self.0.len(), "Out of bounds for atomic ref!");
+    pub fn atomic_ref(&mut self, idx: impl Into<usize>) -> &'a T::Atomic {
+        let idx: usize = idx.into();
+        assert_universal!(idx < self.0.len(), "Out of bounds for atomic ref!");
         let offset_ptr = &mut self.0[idx] as *mut _;
         unsafe { T::into_atomic(offset_ptr) }
     }
@@ -154,8 +112,8 @@ impl<'a, T> Index<UniqueId> for CUDASlice<'a, T> {
     type Output = T;
     #[inline(always)]
     fn index(&self, index: UniqueId) -> &Self::Output {
-        assert_universal!(index.0 < self.0.len());
-        &self.0[index.0]
+        assert_universal!(index.idx() < self.0.len());
+        &self.0[index.idx()]
     }
 }
 
@@ -163,20 +121,20 @@ impl<'a, T> Index<UniqueId> for CUDASliceMut<'a, T> {
     type Output = T;
     #[inline(always)]
     fn index(&self, index: UniqueId) -> &Self::Output {
-        assert_universal!(index.0 < self.0.len());
-        &self.0[index.0]
+        assert_universal!(index.idx() < self.0.len());
+        &self.0[index.idx()]
     }
 }
 
 impl<'a, T> IndexMut<UniqueId> for CUDASliceMut<'a, T> {
     #[inline(always)]
     fn index_mut(&mut self, index: UniqueId) -> &mut Self::Output {
-        assert_universal!(index.0 < self.0.len());
-        &mut self.0[index.0]
+        assert_universal!(index.idx() < self.0.len());
+        &mut self.0[index.idx()]
     }
 }
 
-unsafe impl<T> GPUPassable for CUDASlice<'_, T> {
+unsafe impl<T> crate::gpu_safety::GPUPassable for CUDASlice<'_, T> {
     type FFIRep = (*const T, u64);
 
     fn to_ffi<'a>(&'a mut self) -> Self::FFIRep {
@@ -188,7 +146,7 @@ unsafe impl<T> GPUPassable for CUDASlice<'_, T> {
     }
 }
 
-unsafe impl<T> GPUPassable for CUDASliceMut<'_, T> {
+unsafe impl<T> crate::gpu_safety::GPUPassable for CUDASliceMut<'_, T> {
     type FFIRep = (*mut T, u64);
 
     fn to_ffi<'a>(&'a mut self) -> Self::FFIRep {

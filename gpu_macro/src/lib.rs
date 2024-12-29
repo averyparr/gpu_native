@@ -100,8 +100,8 @@ impl TargetType {
         match self {
                 Self::CUDA => {
                         out.push(syn::parse(quote!{
-                    use crate::cuda_driver_wrapper::{CUDAKernel, CUDAModule};
-                }.into()).map_err(|_| {return quote!{compile_error!("Unable to parse the cuda_driver_wrapper inclusion");};})?);
+                    use gpu_native::cuda::driver_wrapper::{CUDAKernel, CUDAModule};
+                }.into()).map_err(|_| {return quote!{compile_error!("Unable to parse the cuda::driver_wrapper inclusion");};})?);
                 out.push(syn::parse(quote!{
                     use std::sync::LazyLock;
                 }.into()).map_err(|_| {return quote!{compile_error!("Unable to parse the LazyLock inclusion");};})?);
@@ -165,15 +165,15 @@ impl TargetType {
         }.into()).map_err(|_| {return quote!{compile_error!("Unable to parse `Fn(&mut...)`");};})?;
             
         let grid_type: TypePath = match kernel_dim {
-            KernelDim::One => parse_quote!(crate::cuda_safe::GridDim1D),
-            KernelDim::Two => parse_quote!(crate::cuda_safe::GridDim2D),
-            KernelDim::Three => parse_quote!(crate::cuda_safe::GridDim3D),
+            KernelDim::One => parse_quote!(gpu_native::thread_layout::GridDim1D),
+            KernelDim::Two => parse_quote!(gpu_native::thread_layout::GridDim2D),
+            KernelDim::Three => parse_quote!(gpu_native::thread_layout::GridDim3D),
         };
 
         let block_type: TypePath = match kernel_dim {
-            KernelDim::One => parse_quote!(crate::cuda_safe::BlockDim1D),
-            KernelDim::Two => parse_quote!(crate::cuda_safe::BlockDim2D),
-            KernelDim::Three => parse_quote!(crate::cuda_safe::BlockDim3D),
+            KernelDim::One => parse_quote!(gpu_native::thread_layout::BlockDim1D),
+            KernelDim::Two => parse_quote!(gpu_native::thread_layout::BlockDim2D),
+            KernelDim::Three => parse_quote!(gpu_native::thread_layout::BlockDim3D),
         };
         
         let sig: Signature = syn::parse(quote!{
@@ -181,7 +181,7 @@ impl TargetType {
                 grid_dim: #grid_type,
                 block_dim: #block_type,
                 shared_mem_bytes: u32,
-                stream: crate::cuda_driver_wrapper::CUDAStream,
+                stream: gpu_native::cuda::driver_wrapper::CUDAStream,
             ) -> impl #impl_launch
         }.into()).map_err(|_| {return quote!{compile_error!("Unable to parse `fn launch`");};})?;
 
@@ -202,7 +202,7 @@ impl TargetType {
                 .unwrap_or_else(|e| panic!("Kernel launch failed! Driver error '{e:#?}'"))
         };}.into()).map_err(|_| {return quote!{compile_error!("Unable to parse cuda `KERNEL.launch()`");};})?;
         let sync_return: Stmt = syn::parse(quote! {
-            return &crate::cuda_driver_wrapper::CUDASyncObject;
+            return &gpu_native::cuda::driver_wrapper::CUDASyncObject;
         }.into()).map_err(|_| {return quote!{compile_error!("Unable to parse `&CUDASyncObject`");};})?;
 
         Ok(vec![actual_launch, sync_return])
@@ -434,7 +434,7 @@ fn get_ffi_fn_args(sig: &Signature, ident_to_num_ffi: &HashMap<String, u8>) -> i
         let res = (0..num_ffi_parts).map(move |ffi_comp| {
             let sub_id = Ident::new(&format!("{id}_{ffi_comp}"), id.span());
             let sub_type: Type = parse_quote_spanned! {ty.span()=>
-                <<#ty as crate::cuda_safe::GPUPassable>::FFIRep as crate::cuda_safe::TupleIndex<#num_ffi_parts, #ffi_comp>>::Ty
+                <<#ty as gpu_native::gpu_safety::GPUPassable>::FFIRep as gpu_native::gpu_safety::TupleIndex<#num_ffi_parts, #ffi_comp>>::Ty
             };
             Ok((sub_id, sub_type, ffi_comp))
         });
@@ -474,7 +474,7 @@ impl FFIConversion {
                 },
                 Self::FromFFI => {
                     let arg_restructuring: Stmt = syn::parse(quote_spanned! {id_type_span=>
-                        let #id = unsafe { <#ty as crate::cuda_safe::GPUPassable>::from_ffi((#(#ffi_ids,)*)) };
+                        let #id = unsafe { <#ty as gpu_native::gpu_safety::GPUPassable>::from_ffi((#(#ffi_ids,)*)) };
                     }.into()).map_err(|_| {return quote!{compile_error!("Unable to parse restructuring of FFI args");};})?;
                     ffi_conversions.push(arg_restructuring);
                 }
@@ -632,8 +632,6 @@ fn generate_outer_function(
         }?;
     }
 
-    assert!(kernel_inputs.len() == 8);
-
     let kernel_sig = Signature {
         constness: None,
         asyncness: None,
@@ -699,7 +697,7 @@ fn make_gpu_mod(input_fn: &ItemFn, arch: TargetType, ident_to_num_ffi: &HashMap<
 
     items.push(Item::Use(syn::parse_str("use super::*;")?));
     items.push(Item::Use(syn::parse_str(
-        "use crate::cuda_safe::GPUPassable;",
+        "use gpu_native::gpu_safety::GPUPassable;",
     )?));
     items.push(Item::Fn(inner_fn));
 
@@ -719,8 +717,8 @@ fn make_cpu_mod(input_fn: &ItemFn, arch: TargetType, ident_to_num_ffi: &HashMap<
         #[cfg(not(any(target_arch = "nvptx64")))]
         #vis mod #fn_ident {
             use super::*;
-            use crate::cuda_safe::GPUPassable;
-            use crate::cuda_driver_wrapper::CUDASyncObject;
+            use gpu_native::gpu_safety::GPUPassable;
+            use gpu_native::cuda::driver_wrapper::CUDASyncObject;
 
             #static_linker
             #getter

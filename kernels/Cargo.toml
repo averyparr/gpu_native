@@ -1,0 +1,11 @@
+[package]
+name = "kernels"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpu_macro = { version = "0.1.0", path = "../gpu_macro" }
+gpu_native = { version = "0.1.0", path = "../gpu_native" }
+
+[build-dependencies]
+gpu_native = { version = "0.1.0", path = "../gpu_native" }
