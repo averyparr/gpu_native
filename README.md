@@ -75,11 +75,16 @@ fn main() {
 ## Safety in GPU kernels?
 
 It's arguable that memory safety is not as important for GPU workloads as it is for CPU ones. I certainly don't love paying for bounds checks if I can avoid them. 
-That said, I've also spent days of my life tracking down out-of-bounds writes causing nondeterminstic test failures. To that end, generated code is (as far as I have been able to check) **safe**, but also adds **minimal** overhead within that constraint. Bounds checks _typically_ add only a single `JMP` instruction per kernel (if done carefully) and with restructuring of FFI arguments, I can consistently get the LLVM backend to generate `LDG` instructions instead of `LD` (by default). Some of the other safety checks performed:
+That said, I've also spent days of my life tracking down out-of-bounds writes causing nondeterminstic test failures. **Both of the above kernels actually hide the possibility that
+a thread could try to read out of bounds of the array!** They are actually guaranteed to, unless `c.len() == 0 (mod 128)`. In C++, we would have to remember to add an early 
+return statement. In the Rust version, a bounds check would ensure we get a printed error message and kernel failure. 
 
 - FFI safety: Kernel parameters are safely destructured to ensure FFI safety (that's what the `2` in `CUDASlice(2)` means)
 - Mutable memory accesses can only be indexed with `UniqueID` values which are guaranteed distinct per-thread. 
 - Lifetime bounding ensures that all kernel arguments remain valid
+
+Because I would of course still like to avoid paying much runtime cost, I've tried to choose types/function organization that allows for **minimal** overhead while still guaranteeing
+that the kernel is safe. 
 
 ## Try `cargo expand`!
 
