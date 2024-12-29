@@ -155,7 +155,8 @@ macro_rules! link_in_sass {
                         already_compiled_ptx.insert(dep_str_rep.to_string());
                     }
 
-                    let rel_path = dep.strip_prefix(build_dir).expect("Unable to strip prefix");
+                    let rel_buf = dep.to_path_buf();
+                    let rel_path = rel_buf.strip_prefix(build_dir).expect("Unable to strip prefix");
                     let mut ptxas_exec = "ptxas";
                     let mut ptxas_as_arg = None;
                     if use_docker {
@@ -178,7 +179,7 @@ macro_rules! link_in_sass {
                         .current_dir(build_dir)
                         .spawn()
                         .expect("Could not spawn a `ptxas` process.");
-                    compiling_cmds.push((dep.clone(), ptxas_cmd));
+                    compiling_cmds.push((rel_path.to_path_buf(), ptxas_cmd));
                 }
 
                 for (subfile, mut ptxas_proc) in compiling_cmds {
