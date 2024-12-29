@@ -38,7 +38,7 @@ pub fn add_kernel(a: CUDASlice<f32>, b: CUDASlice<f32>, mut c: CUDASliceMut<f32>
     c[idx] = a[idx] + b[idx];
 }
 
-void add_cpu(mut a: CUDASlice<f32>, mut b: CUDASlice<f32>, mut c: CUDASliceMut<f32>) {
+pub fn add_cpu(mut a: CUDASlice<f32>, mut b: CUDASlice<f32>, mut c: CUDASliceMut<f32>) {
     let block_dim = 128;
     let grid_dim = (c.len() + block_dim - 1) / block_dim;
     add_kernel::launch(
