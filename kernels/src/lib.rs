@@ -28,3 +28,9 @@ pub fn separate_kernel(
 
     ad.fetch_add(z, Ordering::Relaxed);
 }
+
+#[gpu_kernel(Kernel1D, CUDA | CUDASliceMut(2); CUDASlice(2))]
+pub fn add_kernel(a: CUDASlice<f32>, b: CUDASlice<f32>, mut c: CUDASliceMut<f32>) {
+    let idx = FlatLayout1D.uid();
+    c[idx] = a[idx] + b[idx];
+}
